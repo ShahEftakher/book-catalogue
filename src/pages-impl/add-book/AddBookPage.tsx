@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { BarcodeIcon, CameraIcon, KeyboardIcon, PencilLineIcon } from "lucide-react";
 import { CameraBarcodeScanner, PhotoBarcodeReader } from "@/components/BarcodeScanner";
 import { BookForm } from "@/components/BookForm";
@@ -77,6 +77,14 @@ export function AddBookPage() {
     }
   }, []);
 
+  // On a phone, the camera is the quickest way in, so start there
+  useEffect(() => {
+    if (window.matchMedia("(max-width: 639px) and (pointer: coarse)").matches) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setMethod("camera");
+    }
+  }, []);
+
   function choose(m: Method) {
     setMethod(m);
     setLookup({ kind: "idle" });
@@ -96,7 +104,7 @@ export function AddBookPage() {
             onClick={() => choose(id)}
             aria-pressed={method === id}
             className={cn(
-              "flex flex-col items-center gap-1.5 rounded-lg border p-3 text-sm transition",
+              "flex min-h-16 flex-col items-center justify-center gap-1.5 rounded-lg border p-3 text-sm transition",
               method === id ? "border-primary bg-primary/5 font-medium" : "hover:bg-muted",
             )}
           >
@@ -117,13 +125,15 @@ export function AddBookPage() {
           <Input
             autoFocus
             inputMode="numeric"
+            enterKeyHint="search"
+            autoComplete="off"
             value={isbnText}
             onChange={(e) => setIsbnText(e.target.value)}
             placeholder="978… or ৯৭৮…"
             aria-label="ISBN"
-            className="h-10"
+            className="h-11 sm:h-10"
           />
-          <Button type="submit" size="lg" className="h-10" disabled={lookup.kind === "loading"}>
+          <Button type="submit" size="lg" className="h-11 sm:h-10" disabled={lookup.kind === "loading"}>
             Look up
           </Button>
         </form>

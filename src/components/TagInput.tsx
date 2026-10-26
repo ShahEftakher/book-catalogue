@@ -21,15 +21,15 @@ export function TagInput({ value, onChange, id }: Props) {
       {value.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {value.map((tag) => (
-            <Badge key={tag} variant="secondary" className="gap-1 pr-1">
+            <Badge key={tag} variant="secondary" className="h-auto gap-1 py-0.5 pr-0.5 max-sm:text-sm">
               {tag}
               <button
                 type="button"
                 aria-label={`Remove ${tag}`}
                 onClick={() => onChange(value.filter((t) => t !== tag))}
-                className="rounded-sm hover:bg-black/10"
+                className="grid size-6 place-items-center rounded-full hover:bg-black/10 max-sm:size-8"
               >
-                <XIcon className="size-3" />
+                <XIcon className="size-3.5" />
               </button>
             </Badge>
           ))}

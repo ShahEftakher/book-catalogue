@@ -38,7 +38,7 @@ export function EditBookPage({ id, title, defaultValues }: Props) {
               }
             }}
           >
-            {deleting ? "Deleting…" : "Delete book"}
+            {deleting ? "Deleting…" : "Delete"}
           </Button>
         }
       />

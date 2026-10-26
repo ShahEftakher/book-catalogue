@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useState, useTransition, type ReactNode } from "react";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { PlusIcon, Trash2Icon } from "lucide-react";
+import { ChevronDownIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { CoverImage } from "@/components/CoverImage";
 import { NativeSelect } from "@/components/NativeSelect";
 import { RatingInput } from "@/components/RatingInput";
@@ -24,6 +24,7 @@ import {
   READING_STATUSES,
   STATUS_LABELS,
 } from "@/lib/constants";
+import { cn } from "@/lib/utils";
 import { bookInput, type BookData, type BookInput } from "@/lib/validation/book";
 
 type Props = {
@@ -58,11 +59,48 @@ function Field({
   );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+/**
+ * A titled group of fields. `collapsible` sections start folded on phones (always open from
+ * the sm breakpoint up) and unfold by themselves when they contain a validation error.
+ */
+function Section({
+  title,
+  children,
+  collapsible,
+  hasError,
+}: {
+  title: string;
+  children: ReactNode;
+  collapsible?: boolean;
+  hasError?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const folded = collapsible && !open && !hasError;
   return (
-    <fieldset className="grid gap-4 rounded-lg border p-4 sm:grid-cols-2">
-      <legend className="px-1 text-sm font-medium">{title}</legend>
-      {children}
+    // Folded on a phone, the whole section shrinks to a single tappable row
+    <fieldset className={cn("rounded-lg border px-4 pt-1 pb-4", folded && "max-sm:border-0 max-sm:p-0")}>
+      <legend className={cn("px-1 text-sm font-medium", folded && "max-sm:w-full max-sm:px-0")}>
+        {collapsible ? (
+          <>
+            <button
+              type="button"
+              aria-expanded={!folded}
+              onClick={() => setOpen((o) => !o)}
+              className={cn(
+                "-mx-1 flex min-h-11 items-center gap-1 px-1 sm:hidden",
+                folded && "mx-0 w-full rounded-lg border px-3",
+              )}
+            >
+              <ChevronDownIcon className={cn("size-4 transition-transform", folded && "-rotate-90")} />
+              {title}
+            </button>
+            <span className="max-sm:hidden">{title}</span>
+          </>
+        ) : (
+          title
+        )}
+      </legend>
+      <div className={cn("grid gap-4 pt-2 sm:grid-cols-2", folded && "max-sm:hidden")}>{children}</div>
     </fieldset>
   );
 }
@@ -128,7 +166,8 @@ export function BookForm({ defaultValues, onSave, submitLabel, footer }: Props) 
         <div className="flex flex-col gap-2 sm:col-span-2">
           <Label>Authors</Label>
           {authors.fields.map((field, index) => (
-            <div key={field.id} className="flex gap-2">
+            <div key={field.id} className="flex items-start gap-2">
+              <div className="grid flex-1 gap-2 sm:grid-cols-2">
               <Controller
                 control={control}
                 name={`authors.${index}.name`}
@@ -151,6 +190,7 @@ export function BookForm({ defaultValues, onSave, submitLabel, footer }: Props) 
                 placeholder="Romanized (optional)"
                 {...register(`authors.${index}.nameLatin`)}
               />
+              </div>
               <Button
                 type="button"
                 variant="ghost"
@@ -187,7 +227,7 @@ export function BookForm({ defaultValues, onSave, submitLabel, footer }: Props) 
 
       <Section title="Edition">
         <Field label="ISBN" htmlFor="isbn" error={errors.isbn?.message} hint="ISBN-10 or 13; Bangla digits are fine">
-          <Input id="isbn" inputMode="numeric" {...register("isbn")} />
+          <Input id="isbn" inputMode="numeric" enterKeyHint="next" autoComplete="off" {...register("isbn")} />
         </Field>
         <Field label="Edition" htmlFor="edition">
           <Input id="edition" placeholder="e.g. 3rd printing, Ekushe Boimela 2019" {...register("edition")} />
@@ -214,10 +254,10 @@ export function BookForm({ defaultValues, onSave, submitLabel, footer }: Props) 
           <Input id="publisherNameLatin" {...register("publisherNameLatin")} />
         </Field>
         <Field label="Year published" htmlFor="publishedYear" error={errors.publishedYear?.message}>
-          <Input id="publishedYear" inputMode="numeric" {...register("publishedYear")} />
+          <Input id="publishedYear" inputMode="numeric" enterKeyHint="next" {...register("publishedYear")} />
         </Field>
         <Field label="Pages" htmlFor="pages" error={errors.pages?.message}>
-          <Input id="pages" inputMode="numeric" {...register("pages")} />
+          <Input id="pages" inputMode="numeric" enterKeyHint="next" {...register("pages")} />
         </Field>
       </Section>
 
@@ -229,9 +269,10 @@ export function BookForm({ defaultValues, onSave, submitLabel, footer }: Props) 
             render={({ field: f }) => (
               <div className="flex flex-wrap gap-3">
                 {BOOK_FORMATS.map((fmt) => (
-                  <label key={fmt} className="flex items-center gap-1.5 text-sm">
+                  <label key={fmt} className="flex min-h-11 items-center gap-2 text-sm sm:min-h-0">
                     <input
                       type="checkbox"
+                      className="size-5 sm:size-4"
                       checked={f.value.includes(fmt)}
                       onChange={(e) =>
                         f.onChange(
@@ -255,12 +296,12 @@ export function BookForm({ defaultValues, onSave, submitLabel, footer }: Props) 
         <div className="flex gap-4 sm:col-span-2">
           <CoverImage src={coverUrl || null} title={title || "No cover"} className="w-20 shrink-0" />
           <Field label="Cover image URL" htmlFor="coverUrl" error={errors.coverUrl?.message} className="flex-1">
-            <Input id="coverUrl" {...register("coverUrl")} />
+            <Input id="coverUrl" type="url" inputMode="url" autoComplete="off" {...register("coverUrl")} />
           </Field>
         </div>
       </Section>
 
-      <Section title="Reading">
+      <Section title="Reading" collapsible hasError={!!(errors.rating || errors.startedAt || errors.finishedAt)}>
         <Field label="Status" htmlFor="status">
           <NativeSelect id="status" {...register("status")}>
             {READING_STATUSES.map((s) => (
@@ -293,7 +334,7 @@ export function BookForm({ defaultValues, onSave, submitLabel, footer }: Props) 
         </Field>
       </Section>
 
-      <Section title="More">
+      <Section title="Tags & description" collapsible>
         <Field label="Tags" htmlFor="tags" className="sm:col-span-2">
           <Controller
             control={control}
@@ -320,8 +361,9 @@ export function BookForm({ defaultValues, onSave, submitLabel, footer }: Props) 
         </p>
       )}
 
-      <div className="flex items-center gap-3">
-        <Button type="submit" size="lg" disabled={pending}>
+      {/* Phones: Save stays reachable in a bar pinned to the bottom of the screen */}
+      <div className="sticky bottom-0 z-20 -mx-4 flex items-center gap-3 border-t bg-background/95 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0 sm:backdrop-blur-none">
+        <Button type="submit" size="lg" disabled={pending} className="max-sm:flex-1">
           {pending ? "Saving…" : submitLabel}
         </Button>
         {footer}

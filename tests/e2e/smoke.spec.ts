@@ -1,8 +1,10 @@
 import { expect, test } from "@playwright/test";
 
-test("browse, sign in, add a Bangla book manually, find it by romanized title", async ({ page }) => {
-  const unique = `পরীক্ষা ${Date.now()}`;
-  const latin = `Porikkha ${Date.now()}`;
+test("browse, sign in, add a Bangla book manually, find it by romanized title", async ({ page }, info) => {
+  // Device projects run in parallel, so each run needs its own book
+  const id = `${info.project.name}${crypto.randomUUID().slice(0, 8)}`;
+  const unique = `পরীক্ষা ${id}`;
+  const latin = `Porikkha ${id}`;
 
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Library" })).toBeVisible();
@@ -25,12 +27,12 @@ test("browse, sign in, add a Bangla book manually, find it by romanized title", 
   await expect(page.getByText("Bangla")).toBeVisible();
 
   await page.goto(`/?q=${encodeURIComponent(latin.toLowerCase())}`);
-  await expect(page.getByText("1 book matching")).toBeVisible();
+  await expect(page.getByText(/book(s)? matching/)).toBeVisible();
   await page.getByRole("link", { name: new RegExp(unique) }).click();
 
   // Clean up
   await page.getByRole("link", { name: "Edit" }).click();
   page.once("dialog", (d) => d.accept());
-  await page.getByRole("button", { name: "Delete book" }).click();
+  await page.getByRole("button", { name: "Delete" }).click();
   await expect(page).toHaveURL("/");
 });

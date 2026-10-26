@@ -14,10 +14,10 @@ export function RatingInput({ value, onChange }: Props) {
         {[1, 2, 3, 4, 5].map((n) => {
           const fill = current >= n ? 100 : current >= n - 0.5 ? 50 : 0;
           return (
-            <span key={n} className="relative inline-block size-7">
-              <StarIcon className="absolute size-7 text-stone-300" />
+            <span key={n} className="relative inline-block size-8 sm:size-7">
+              <StarIcon className="absolute size-8 sm:size-7 text-stone-300" />
               <span className="absolute inset-0 overflow-hidden" style={{ width: `${fill}%` }}>
-                <StarIcon className="size-7 fill-amber-400 text-amber-400" />
+                <StarIcon className="size-8 sm:size-7 fill-amber-400 text-amber-400" />
               </span>
               {[n - 0.5, n].map((v, i) => (
                 <button

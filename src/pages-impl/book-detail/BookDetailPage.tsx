@@ -11,9 +11,9 @@ import { FORMAT_LABELS, languageLabel } from "@/lib/constants";
 
 function Fact({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex gap-3 py-1.5 text-sm">
-      <dt className="w-28 shrink-0 text-muted-foreground">{label}</dt>
-      <dd className="min-w-0">{children}</dd>
+    <div className="flex gap-3 py-2 text-sm">
+      <dt className="w-24 shrink-0 text-muted-foreground sm:w-28">{label}</dt>
+      <dd className="min-w-0 break-words">{children}</dd>
     </div>
   );
 }
@@ -34,16 +34,22 @@ export function BookDetailPage({ book, isOwner }: { book: BookDetail; isOwner: b
         )}
       </div>
 
-      <div className="grid gap-8 md:grid-cols-[220px_1fr]">
-        <CoverImage src={book.coverUrl} title={book.title} lang={lang} className="mx-auto w-48 md:w-full" />
+      {/* Phones: small cover beside the title, details below. md+: cover column on the left. */}
+      <div className="grid grid-cols-[6.5rem_1fr] gap-x-4 gap-y-5 md:grid-cols-[220px_1fr] md:gap-x-8">
+        <CoverImage
+          src={book.coverUrl}
+          title={book.title}
+          lang={lang}
+          className="w-full self-start md:row-span-2"
+        />
 
-        <div className="flex min-w-0 flex-col gap-4">
+        <div className="flex min-w-0 flex-col gap-3">
           <header className="flex flex-col gap-1">
-            <h1 lang={lang} className="text-2xl font-semibold tracking-tight">
+            <h1 lang={lang} className="text-xl font-semibold tracking-tight break-words sm:text-2xl">
               {book.title}
             </h1>
             {book.subtitle && (
-              <p lang={lang} className="text-lg text-muted-foreground">
+              <p lang={lang} className="text-base text-muted-foreground sm:text-lg">
                 {book.subtitle}
               </p>
             )}
@@ -79,12 +85,17 @@ export function BookDetailPage({ book, isOwner }: { book: BookDetail; isOwner: b
           {book.tags.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {book.tags.map((t) => (
-                <Link key={t} href={`/?tag=${encodeURIComponent(t)}`}>
-                  <Badge variant="outline">{t}</Badge>
+                <Link key={t} href={`/?tag=${encodeURIComponent(t)}`} className="max-sm:py-1">
+                  <Badge variant="outline" className="max-sm:h-7 max-sm:px-3 max-sm:text-sm">
+                    {t}
+                  </Badge>
                 </Link>
               ))}
             </div>
           )}
+        </div>
+
+        <div className="col-span-2 flex min-w-0 flex-col gap-4 md:col-span-1 md:col-start-2">
 
           <dl className="divide-y rounded-lg border px-4 py-1">
             {book.publisher && (

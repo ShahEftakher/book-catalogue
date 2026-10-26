@@ -4,7 +4,12 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "./tests/e2e",
   use: { baseURL: "http://localhost:3000" },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    { name: "desktop", use: { ...devices["Desktop Chrome"] } },
+    // Phone viewports/touch, run in Chromium so only one browser needs installing
+    { name: "iphone", use: { ...devices["iPhone 13"], browserName: "chromium" } },
+    { name: "pixel", use: { ...devices["Pixel 7"] } },
+  ],
   webServer: {
     command: "pnpm dev",
     url: "http://localhost:3000",
