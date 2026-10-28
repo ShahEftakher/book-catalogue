@@ -54,5 +54,8 @@ tests/e2e/      Playwright
 - Online lookups (Open Library → Google Books) rarely know Bangla books, so authors and publishers you've entered before autocomplete — your own catalogue becomes the source.
 
 ## Roadmap
+The full plan, with what's done, what's left and every technology decision, is in
+[docs/PLAN.md](docs/PLAN.md).
+
 - **Pass 2:** add by cover/title-page photo (Claude vision), lending tracker, Goodreads import + CSV/JSON export, stats.
 - **Pass 3:** deploy to Vercel (Neon + Blob integrations), then Kindle highlights/library import and other v2 items.
