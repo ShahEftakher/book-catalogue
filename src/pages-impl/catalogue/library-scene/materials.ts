@@ -1,56 +1,111 @@
 import { useTexture } from "@react-three/drei";
-import { useMemo } from "react";
+import { useThree } from "@react-three/fiber";
+import { useEffect, useMemo, useState } from "react";
 import {
   CanvasTexture,
   MeshBasicMaterial,
   RepeatWrapping,
   SRGBColorSpace,
   type Texture,
+  TextureLoader,
 } from "three";
+import { uploadLater } from "./bookTextures";
+
+export type Quality = "high" | "low";
 
 const PH = "/assets/polyhaven";
-export const TEXTURE_URLS = {
-  stone: `${PH}/castle_wall_slates/diff.jpg`,
-  stoneNormal: `${PH}/castle_wall_slates/nor.jpg`,
-  floor: `${PH}/large_grey_tiles/diff.jpg`,
-  floorNormal: `${PH}/large_grey_tiles/nor.jpg`,
-  wood: `${PH}/worn_planks/diff.jpg`,
-  woodNormal: `${PH}/worn_planks/nor.jpg`,
-} as const;
+export const HDRI_URL = `${PH}/church_museum_1k.hdr`;
 
-const LEATHER = { map: `${PH}/brown_leather/diff.jpg`, normal: `${PH}/brown_leather/nor.jpg` };
+/** Poly Haven texture sets: colour + normal at 1k and 2k, and one packed AO/roughness/metal ("arm") map. */
+const SETS = ["castle_wall_slates", "large_grey_tiles", "worn_planks"] as const;
+const url = (id: string, map: string) => `${PH}/${id}/${map}.jpg`;
+const LOW_URLS = SETS.flatMap((id) => [url(id, "diff_1k"), url(id, "nor_1k"), url(id, "arm")]);
+const HIGH_URLS = SETS.flatMap((id) => [url(id, "diff_2k"), url(id, "nor_2k")]);
+const LEATHER_URLS = ["diff_1k", "nor_1k", "arm"].map((m) => url("brown_leather", m));
 
-/** A repeat-wrapped copy of a texture (copies share the image, so this is cheap). */
-export function tiled(tex: Texture, x: number, y: number, color = false): Texture {
-  const t = tex.clone();
+/** Everything a physically based material needs from one texture set. */
+export type Pbr = { map: Texture; normalMap: Texture; aoMap: Texture; roughnessMap: Texture };
+
+/** Configure a loaded texture once. Copies inherit these settings, so they share one GPU upload. */
+function prepare(t: Texture, color: boolean, anisotropy: number) {
   t.wrapS = t.wrapT = RepeatWrapping;
-  t.repeat.set(x, y);
-  if (color) t.colorSpace = SRGBColorSpace;
-  t.anisotropy = 8;
-  t.needsUpdate = true;
+  t.colorSpace = color ? SRGBColorSpace : t.colorSpace;
+  t.anisotropy = anisotropy;
   return t;
 }
 
-/** Poly Haven photo textures for the room (suspends until loaded). */
-export function useRoomTextures() {
-  const [stone, stoneNormal, floor, floorNormal, wood, woodNormal] = useTexture([
-    TEXTURE_URLS.stone,
-    TEXTURE_URLS.stoneNormal,
-    TEXTURE_URLS.floor,
-    TEXTURE_URLS.floorNormal,
-    TEXTURE_URLS.wood,
-    TEXTURE_URLS.woodNormal,
-  ]);
-  // Stable object identity, so materials built from these aren't rebuilt (and re-uploaded) every render
-  return useMemo(
-    () => ({ stone, stoneNormal, floor, floorNormal, wood, woodNormal }),
-    [stone, stoneNormal, floor, floorNormal, wood, woodNormal],
-  );
+/** Repeat-wrapped copies of a texture set. Copies share the image and its GPU upload. */
+export function tiled(set: Pbr, x: number, y: number): Pbr {
+  const copy = (t: Texture) => {
+    const c = t.clone();
+    c.repeat.set(x, y);
+    // Match the original's version instead of flagging an update: that would re-upload the image
+    c.version = Math.max(1, t.version);
+    return c;
+  };
+  return { map: copy(set.map), normalMap: copy(set.normalMap), aoMap: copy(set.aoMap), roughnessMap: copy(set.aoMap) };
 }
 
-export function useLeatherTextures() {
-  const [map, normal] = useTexture([LEATHER.map, LEATHER.normal]);
-  return useMemo(() => ({ map: tiled(map, 1, 1, true), normal: tiled(normal, 1, 1) }), [map, normal]);
+function toSets(textures: Texture[], high: Texture[] | null, anisotropy: number) {
+  const [stone, floor, wood] = SETS.map((_, i): Pbr => {
+    const [diff, nor, arm] = textures.slice(i * 3, i * 3 + 3);
+    const arms = prepare(arm, false, anisotropy);
+    return {
+      map: prepare(high?.[i * 2] ?? diff, true, anisotropy),
+      normalMap: prepare(high?.[i * 2 + 1] ?? nor, false, anisotropy),
+      aoMap: arms,
+      roughnessMap: arms,
+    };
+  });
+  return { stone, floor, wood };
+}
+
+/**
+ * Poly Haven photo textures for the room (suspends until the 1k set has loaded). On desktop the
+ * 2k colour and normal maps then stream in, upload one per frame, and replace the 1k ones.
+ */
+export function useRoomTextures(quality: Quality) {
+  const gl = useThree((s) => s.gl);
+  const low = useTexture(LOW_URLS);
+  const [high, setHigh] = useState<Texture[] | null>(null);
+  const anisotropy = gl.capabilities.getMaxAnisotropy();
+
+  useEffect(() => {
+    if (quality !== "high") return;
+    let cancelled = false;
+    const loader = new TextureLoader();
+    void Promise.all(HIGH_URLS.map((u) => loader.loadAsync(u)))
+      .then(async (textures) => {
+        textures.forEach((t, i) => prepare(t, i % 2 === 0, anisotropy));
+        for (const t of textures) {
+          if (cancelled) return;
+          await uploadLater(t);
+        }
+        if (!cancelled) setHigh(textures);
+      })
+      .catch(() => {}); // stay on the 1k set
+    return () => {
+      cancelled = true;
+    };
+  }, [quality, anisotropy]);
+
+  // Stable identity, so materials built from these aren't rebuilt (and re-uploaded) every render
+  return useMemo(() => toSets(low, quality === "high" ? high : null, anisotropy), [low, high, quality, anisotropy]);
+}
+
+export function useLeatherTextures(): Pbr {
+  const [map, normal, arm] = useTexture(LEATHER_URLS);
+  return useMemo(() => {
+    // Used directly (not copied), so the new colour space and wrapping need a fresh upload
+    for (const [t, color] of [
+      [map, true],
+      [normal, false],
+      [arm, false],
+    ] as const) {
+      prepare(t, color, 8).needsUpdate = true;
+    }
+    return { map, normalMap: normal, aoMap: arm, roughnessMap: arm };
+  }, [map, normal, arm]);
 }
 
 // Shared, time-of-day driven materials. Lighting updates their colours every frame.
@@ -77,10 +132,13 @@ const GLASS = ["#c8a24a", "#e2c27a", "#b03a2e", "#2c4f9e", "#3f7a4a", "#d8b866",
 
 /** One leaded lancet: pale diamond quarries inside a jewelled border, a figure-like roundel. */
 function lancetTexture() {
-  const k = canvas(256, 640);
+  // Drawn at 2× for crisp lead lines up close
+  const k = canvas(512, 1280);
   if (!k) return null;
   const { c, x } = k;
+  x.scale(2, 2);
   const rand = seeded(7);
+  const j = () => (rand() - 0.5) * 3; // hand-cut panes are never quite regular
   x.fillStyle = "#1a1410";
   x.fillRect(0, 0, 256, 640);
   // Diamond quarries
@@ -91,11 +149,12 @@ function lancetTexture() {
       const cy = row * (q / 2);
       x.fillStyle = rand() < 0.12 ? GLASS[Math.floor(rand() * GLASS.length)] : rand() < 0.5 ? "#e8dcb4" : "#d9caa0";
       x.beginPath();
-      x.moveTo(cx, cy - q / 2 + 2);
-      x.lineTo(cx + q / 2 - 2, cy);
-      x.lineTo(cx, cy + q / 2 - 2);
-      x.lineTo(cx - q / 2 + 2, cy);
+      x.moveTo(cx + j(), cy - q / 2 + 2 + j());
+      x.lineTo(cx + q / 2 - 2 + j(), cy + j());
+      x.lineTo(cx + j(), cy + q / 2 - 2 + j());
+      x.lineTo(cx - q / 2 + 2 + j(), cy + j());
       x.fill();
+      seedy(x, cx, cy, q / 2, rand);
     }
   }
   // Jewelled border
@@ -129,9 +188,10 @@ function lancetTexture() {
 
 /** A rose window: petals of coloured glass radiating from a golden centre. */
 function roseTexture() {
-  const k = canvas(512, 512);
+  const k = canvas(1024, 1024);
   if (!k) return null;
   const { c, x } = k;
+  x.scale(2, 2);
   const rand = seeded(11);
   x.fillStyle = "#1a1410";
   x.fillRect(0, 0, 512, 512);
@@ -166,6 +226,15 @@ function roseTexture() {
   x.fill();
   grime(x, 512, 512, rand);
   return toTexture(c);
+}
+
+/** Old "seedy" glass is thicker in places: each pane gets an off-centre bright spot and darker rim. */
+function seedy(x: CanvasRenderingContext2D, cx: number, cy: number, r: number, rand: () => number) {
+  const g = x.createRadialGradient(cx + (rand() - 0.5) * r, cy + (rand() - 0.5) * r, 0, cx, cy, r);
+  g.addColorStop(0, "rgba(255,250,235,0.22)");
+  g.addColorStop(1, "rgba(30,20,10,0.22)");
+  x.fillStyle = g;
+  x.fill();
 }
 
 /** Old glass is uneven: a scatter of darker and lighter flecks. */

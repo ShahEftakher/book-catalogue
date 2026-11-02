@@ -1,15 +1,16 @@
 "use client";
 
-import { memo, useLayoutEffect, useMemo, useRef } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import {
   BackSide,
-  BoxGeometry,
   BufferGeometry,
   CircleGeometry,
   Color,
   CylinderGeometry,
   DoubleSide,
+  InstancedBufferAttribute,
   InstancedMesh,
+  MeshStandardMaterial,
   Object3D,
   Path,
   RingGeometry,
@@ -17,12 +18,29 @@ import {
   ShapeGeometry,
   SphereGeometry,
   TorusGeometry,
+  LatheGeometry,
+  Vector2,
 } from "three";
+import { roundedBox } from "./geometry";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { BINDINGS, ROOM } from "./helix";
-import { flameMaterial, glassMaterial, ironworkTexture, roseMaterial, rugTexture, skyMaterial, tiled, useRoomTextures } from "./materials";
+import { surface } from "./antiTile";
+import {
+  flameMaterial,
+  glassMaterial,
+  ironworkTexture,
+  type Pbr,
+  type Quality,
+  roseMaterial,
+  rugTexture,
+  skyMaterial,
+  tiled,
+  useLeatherTextures,
+  useRoomTextures,
+} from "./materials";
+import { ATLAS, ATLAS_CELLS, spineAtlas } from "./spineAtlas";
 
-export type Quality = "high" | "low";
+export type { Quality };
 
 const TAU = Math.PI * 2;
 const BAY = TAU / ROOM.bays;
@@ -33,6 +51,33 @@ const SHELF_ROWS = 6;
 const SHELF_GAP = 1.7;
 const CASE_TOP = 0.4 + SHELF_ROWS * SHELF_GAP + 0.5;
 const OCULUS = 0.13; // angular radius of the opening at the top of the dome
+
+// Half-profiles (radius, height) for the column mouldings: a stepped torus base and a flared capital
+const BASE_PROFILE = [
+  [0, 0],
+  [0.95, 0],
+  [0.95, 0.22],
+  [0.86, 0.26],
+  [0.86, 0.34],
+  [0.8, 0.46],
+  [0.72, 0.55],
+  [0.7, 0.68],
+  [0.62, 0.72],
+  [0.62, 0.8],
+  [0, 0.8],
+].map(([x, y]) => new Vector2(x, y));
+const CAPITAL_PROFILE = [
+  [0, 0],
+  [0.62, 0],
+  [0.66, 0.08],
+  [0.66, 0.16],
+  [0.7, 0.3],
+  [0.82, 0.58],
+  [0.92, 0.78],
+  [0.98, 0.84],
+  [0.98, 1.1],
+  [0, 1.1],
+].map(([x, y]) => new Vector2(x, y));
 
 /** Every third bay holds a window instead of shelves. */
 export const isWindowBay = (b: number) => b % 3 === 1;
@@ -105,7 +150,7 @@ function wallStrip(radius: number, a0: number, a1: number, y0: number, y1: numbe
 
 // Memoised: the room only depends on its size and quality, not on hover/scroll state
 export const Room = memo(function Room({ storeys, quality }: { storeys: number; quality: Quality }) {
-  const t = useRoomTextures();
+  const t = useRoomTextures(quality);
   const height = storeys * ROOM.storeyHeight;
   const inner = ROOM.radius - ROOM.galleryDepth;
 
@@ -114,18 +159,22 @@ export const Room = memo(function Room({ storeys, quality }: { storeys: number; 
     const iron = ironworkTexture();
     iron?.repeat.set(Math.round((TAU * inner) / 1.8), 1);
     return {
-      wall: { map: tiled(t.stone, circumference / 3.5, height / 3.5, true), normalMap: tiled(t.stoneNormal, circumference / 3.5, height / 3.5) },
-      column: { map: tiled(t.stone, 1, ROOM.storeyHeight / 3, true), normalMap: tiled(t.stoneNormal, 1, ROOM.storeyHeight / 3) },
+      wall: tiled(t.stone, circumference / 3.5, height / 3.5),
+      column: tiled(t.stone, 1.5, ROOM.storeyHeight / 3),
       // Shape geometries use world units as UVs, so a 1/3 repeat means one tile per 3 m
-      trim: { map: tiled(t.stone, 1 / 3, 1 / 3, true), normalMap: tiled(t.stoneNormal, 1 / 3, 1 / 3) },
-      floor: { map: tiled(t.floor, 12, 12, true), normalMap: tiled(t.floorNormal, 12, 12) },
-      wood: { map: tiled(t.wood, 10, 2, true), normalMap: tiled(t.woodNormal, 10, 2) },
-      vault: { map: tiled(t.wood, 36, 8, true), normalMap: tiled(t.woodNormal, 36, 8) },
-      beam: { map: tiled(t.wood, 1, 12, true), normalMap: tiled(t.woodNormal, 1, 12) },
+      trim: tiled(t.stone, 1 / 3, 1 / 3),
+      floor: tiled(t.floor, 12, 12),
+      wood: tiled(t.wood, 10, 2),
+      vault: tiled(t.wood, 36, 8),
+      beam: tiled(t.wood, 1, 12),
       iron,
       rug: rugTexture(),
+      // Large surfaces get the no-tile + grime shader patch (no-tile sampling on desktop only)
+      wallPatch: surface("wall", quality === "high"),
+      floorPatch: surface("floor", quality === "high"),
+      vaultPatch: surface("vault", quality === "high"),
     };
-  }, [t, height, inner]);
+  }, [t, height, inner, quality]);
 
   // Bookcases: shelf boards, a timber back, uprights between sections and a cornice, merged
   const cases = useMemo(() => {
@@ -143,7 +192,7 @@ export const Room = memo(function Room({ storeys, quality }: { storeys: number; 
         }
         parts.push(wallStrip(ROOM.radius - 0.06, a0, a0 + BAY, base, base + CASE_TOP));
         for (let j = 0; j <= SECTIONS; j++) {
-          parts.push(place(new BoxGeometry(0.28, CASE_TOP, 0.9), a0 + j * SECTION, SHELF_R + 0.35, base + CASE_TOP / 2));
+          parts.push(place(roundedBox(0.28, CASE_TOP, 0.9, 2, 0.04), a0 + j * SECTION, SHELF_R + 0.35, base + CASE_TOP / 2));
         }
         // Cornice and plinth jut out a little further than the shelves
         for (const [y, h] of [
@@ -207,7 +256,7 @@ export const Room = memo(function Room({ storeys, quality }: { storeys: number; 
         roses.push(place(new CircleGeometry(ROSE, 48).translate(0, H + ROSE + 0.5, 0), a, ROOM.radius - 0.05, y));
         trim.push(place(new RingGeometry(ROSE, ROSE + 0.4, 48).translate(0, H + ROSE + 0.5, 0.06), a, ROOM.radius - 0.05, y));
         // Sill
-        trim.push(place(new BoxGeometry(6.4, 0.35, 0.7).translate(0, -0.2, 0.2), a, ROOM.radius - 0.05, y));
+        trim.push(place(roundedBox(6.4, 0.35, 0.7, 2, 0.08).translate(0, -0.2, 0.2), a, ROOM.radius - 0.05, y));
       }
     }
     return { glass: mergeGeometries(glass), roses: mergeGeometries(roses), trim: mergeGeometries(trim.map((g) => g.toNonIndexed())) };
@@ -232,6 +281,22 @@ export const Room = memo(function Room({ storeys, quality }: { storeys: number; 
     return mergeGeometries(parts);
   }, [height]);
 
+  // Column bases and capitals: lathe-turned stone profiles, merged into one mesh
+  const mouldings = useMemo(() => {
+    const parts: BufferGeometry[] = [];
+    const r = inner - 0.6;
+    for (let b = 0; b < ROOM.bays; b++) {
+      const a = b * BAY;
+      for (let s = 0; s < storeys; s++) {
+        const y = s * ROOM.storeyHeight;
+        parts.push(new LatheGeometry(BASE_PROFILE, 32).translate(Math.cos(a) * r, y, Math.sin(a) * r));
+        const top = (s + 1) * ROOM.storeyHeight - 0.05;
+        parts.push(new LatheGeometry(CAPITAL_PROFILE, 32).translate(Math.cos(a) * r, top - 1.1, Math.sin(a) * r));
+      }
+    }
+    return mergeGeometries(parts);
+  }, [storeys, inner]);
+
   const rugs = useMemo(
     () =>
       CANDLES.map(([x, , z]) => {
@@ -246,22 +311,22 @@ export const Room = memo(function Room({ storeys, quality }: { storeys: number; 
       {/* Ground floor flagstones */}
       <mesh rotation-x={-Math.PI / 2} receiveShadow>
         <circleGeometry args={[ROOM.radius, 96]} />
-        <meshStandardMaterial {...mats.floor} color="#8f8577" roughness={0.9} />
+        <meshStandardMaterial {...mats.floor} {...mats.floorPatch} color="#8f8577" />
       </mesh>
 
       {/* Grey castle-stone wall */}
-      <mesh position-y={height / 2} receiveShadow>
+      <mesh position-y={height / 2} receiveShadow castShadow>
         <cylinderGeometry args={[ROOM.radius, ROOM.radius, height, 128, 1, true]} />
-        <meshStandardMaterial {...mats.wall} color="#cdbca6" side={BackSide} roughness={0.95} />
+        <meshStandardMaterial {...mats.wall} {...mats.wallPatch} color="#cdbca6" side={BackSide} />
       </mesh>
 
       {/* Planked timber vault with an open oculus */}
-      <mesh position-y={height} receiveShadow>
+      <mesh position-y={height} receiveShadow castShadow>
         <sphereGeometry args={[ROOM.radius, 96, 32, 0, TAU, OCULUS, Math.PI / 2 - OCULUS]} />
-        <meshStandardMaterial {...mats.vault} color="#6e5442" side={BackSide} roughness={0.9} />
+        <meshStandardMaterial {...mats.vault} {...mats.vaultPatch} color="#6e5442" side={BackSide} />
       </mesh>
       <mesh geometry={vault} castShadow={quality === "high"}>
-        <meshStandardMaterial {...mats.beam} color="#5a4232" roughness={0.85} />
+        <meshStandardMaterial {...mats.beam} color="#5a4232" />
       </mesh>
       <mesh position-y={height + ROOM.radius * Math.cos(OCULUS) - 0.05} rotation-x={Math.PI / 2} material={skyMaterial}>
         <circleGeometry args={[ROOM.radius * Math.sin(OCULUS), 48]} />
@@ -269,7 +334,7 @@ export const Room = memo(function Room({ storeys, quality }: { storeys: number; 
 
       {/* Dark timber bookcases and their books */}
       <mesh geometry={cases} receiveShadow castShadow={quality === "high"}>
-        <meshStandardMaterial {...mats.wood} color="#8a6448" side={DoubleSide} roughness={0.75} />
+        <meshStandardMaterial {...mats.wood} color="#8a6448" side={DoubleSide} />
       </mesh>
       <ShelfSpines storeys={storeys} quality={quality} />
 
@@ -277,7 +342,7 @@ export const Room = memo(function Room({ storeys, quality }: { storeys: number; 
       {galleries && (
         <>
           <mesh geometry={galleries.walk} receiveShadow castShadow={quality === "high"}>
-            <meshStandardMaterial {...mats.wood} color="#7a5a42" side={DoubleSide} roughness={0.8} />
+            <meshStandardMaterial {...mats.wood} color="#7a5a42" side={DoubleSide} />
           </mesh>
           <mesh geometry={galleries.rail}>
             <meshStandardMaterial map={mats.iron} color="#2a2420" metalness={0.6} roughness={0.5} alphaTest={0.5} side={DoubleSide} />
@@ -285,23 +350,26 @@ export const Room = memo(function Room({ storeys, quality }: { storeys: number; 
         </>
       )}
 
-      {/* Stone columns between the bays */}
+      {/* Stone columns between the bays, with moulded bases and capitals on every storey */}
       {Array.from({ length: ROOM.bays }, (_, b) => {
         const a = b * BAY;
         return (
           <mesh key={b} position={[Math.cos(a) * (inner - 0.6), height / 2, Math.sin(a) * (inner - 0.6)]} castShadow receiveShadow>
-            <cylinderGeometry args={[0.6, 0.7, height, 20]} />
-            <meshStandardMaterial {...mats.column} color="#cdbca6" roughness={0.95} />
+            <cylinderGeometry args={[0.6, 0.62, height, 32]} />
+            <meshStandardMaterial {...mats.column} color="#cdbca6" />
           </mesh>
         );
       })}
+      <mesh geometry={mouldings} castShadow receiveShadow>
+        <meshStandardMaterial {...mats.column} color="#d2c3ae" />
+      </mesh>
       <Lanterns storeys={storeys} radius={inner - 1.35} />
 
       {/* Stained-glass windows */}
       <mesh geometry={windows.glass} material={glassMaterial} />
       <mesh geometry={windows.roses} material={roseMaterial} />
       <mesh geometry={windows.trim} receiveShadow>
-        <meshStandardMaterial {...mats.trim} color="#d6d0c4" roughness={0.9} />
+        <meshStandardMaterial {...mats.trim} color="#d6d0c4" />
       </mesh>
 
       <Chandeliers storeys={storeys} />
@@ -320,14 +388,19 @@ export const Room = memo(function Room({ storeys, quality }: { storeys: number; 
   );
 });
 
-/** Thousands of decorative leather spines on the wall shelves, in one draw call. */
+/**
+ * Thousands of decorative leather spines on the wall shelves, in one draw call. Each picks one of
+ * the procedural spine designs in a shared atlas (bands, gilt, labels) through a per-instance cell.
+ */
 function ShelfSpines({ storeys, quality }: { storeys: number; quality: Quality }) {
   const ref = useRef<InstancedMesh>(null);
-  const { count, matrices, colors } = useMemo(() => {
+  const leather = useLeatherTextures();
+  const { count, matrices, colors, cells } = useMemo(() => {
     const rand = rng(42);
     const o = new Object3D();
     const ms: number[] = [];
     const cs: number[] = [];
+    const cl: number[] = [];
     const c = new Color();
     // Phones fill fewer rows (the top rows of each storey stay empty)
     const rows = quality === "high" ? SHELF_ROWS : 4;
@@ -360,14 +433,51 @@ function ShelfSpines({ storeys, quality }: { storeys: number; quality: Quality }
                 .lerp(new Color("#5a3a22"), 0.35)
                 .multiplyScalar(0.6 + rand() * 0.6);
               cs.push(c.r, c.g, c.b);
+              cl.push(Math.floor(rand() * ATLAS_CELLS));
               a += step + 0.002;
             }
           }
         }
       }
     }
-    return { count: ms.length / 16, matrices: ms, colors: cs };
+    return { count: ms.length / 16, matrices: ms, colors: cs, cells: new Float32Array(cl) };
   }, [storeys, quality]);
+
+  const geometry = useMemo(() => {
+    const g = roundedBox(1, 1, 1, 2, 0.06);
+    g.setAttribute("cell", new InstancedBufferAttribute(cells, 1));
+    return g;
+  }, [cells]);
+  const material = useMemo(() => {
+    const m = new MeshStandardMaterial({
+      map: spineAtlas(quality === "high" ? 2048 : 1024),
+      normalMap: leather.normalMap,
+      roughnessMap: leather.roughnessMap,
+      roughness: 0.9,
+    });
+    // Shift each instance's texture coordinates into its own atlas cell
+    m.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader
+        .replace("#include <common>", "#include <common>\nattribute float cell;")
+        .replace(
+          "#include <uv_vertex>",
+          `#include <uv_vertex>
+          #ifdef USE_MAP
+            vMapUv = (vMapUv + vec2(mod(cell, ${ATLAS.cols}.0), ${ATLAS.rows - 1}.0 - floor(cell / ${ATLAS.cols}.0))) / vec2(${ATLAS.cols}.0, ${ATLAS.rows}.0);
+          #endif`,
+        );
+    };
+    m.customProgramCacheKey = () => "spine-atlas";
+    return m;
+  }, [quality, leather]);
+  useEffect(
+    () => () => {
+      geometry.dispose();
+      material.map?.dispose();
+      material.dispose();
+    },
+    [geometry, material],
+  );
 
   useLayoutEffect(() => {
     const mesh = ref.current;
@@ -381,13 +491,11 @@ function ShelfSpines({ storeys, quality }: { storeys: number; quality: Quality }
     }
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  }, [count, matrices, colors]);
+    // (the mesh is rebuilt when its geometry or material changes, so fill it again then too)
+  }, [count, matrices, colors, geometry, material]);
 
   return (
-    <instancedMesh ref={ref} args={[undefined, undefined, count]} receiveShadow frustumCulled={false}>
-      <boxGeometry args={[1, 1, 1]} />
-      <meshStandardMaterial roughness={0.7} />
-    </instancedMesh>
+    <instancedMesh ref={ref} args={[geometry, material, count]} receiveShadow frustumCulled={false} />
   );
 }
 
@@ -503,7 +611,26 @@ function Chandeliers({ storeys }: { storeys: number }) {
   );
 }
 
-type WoodMat = { map: import("three").Texture; normalMap: import("three").Texture };
+type WoodMat = Pbr;
+
+// Bevelled tops and treads, turned legs: hard 90° edges are what made the props look low-poly
+const TABLE_TOP = roundedBox(1.2, 0.08, 2.4, 2, 0.025);
+const TABLE_LEG = new LatheGeometry(
+  [
+    [0, 0],
+    [0.06, 0],
+    [0.05, 0.12],
+    [0.035, 0.3],
+    [0.06, 0.48],
+    [0.035, 0.62],
+    [0.04, 0.92],
+    [0.055, 0.98],
+    [0.055, 1.04],
+    [0, 1.04],
+  ].map(([x, y]) => new Vector2(x, y)),
+  12,
+).translate(0, -0.52, 0);
+const TREAD = roundedBox(2.2, 0.12, 0.7, 2, 0.03);
 
 /** Three reading tables around the helix, each with a candle (gives the room its scale). */
 function ReadingTables({ wood }: { wood: WoodMat }) {
@@ -513,9 +640,8 @@ function ReadingTables({ wood }: { wood: WoodMat }) {
         const a = Math.atan2(z, x);
         return (
           <group key={k} position={[x, 0, z]} rotation-y={-a}>
-            <mesh position-y={1.05} castShadow receiveShadow>
-              <boxGeometry args={[1.2, 0.08, 2.4]} />
-              <meshStandardMaterial {...wood} color="#8a6448" roughness={0.6} />
+            <mesh position-y={1.05} castShadow receiveShadow geometry={TABLE_TOP}>
+              <meshStandardMaterial {...wood} color="#8a6448" roughness={0.8} />
             </mesh>
             {[
               [-0.5, -1.1],
@@ -523,8 +649,7 @@ function ReadingTables({ wood }: { wood: WoodMat }) {
               [-0.5, 1.1],
               [0.5, 1.1],
             ].map(([lx, lz], i) => (
-              <mesh key={i} position={[lx, 0.52, lz]} castShadow>
-                <boxGeometry args={[0.08, 1.04, 0.08]} />
+              <mesh key={i} position={[lx, 0.52, lz]} castShadow geometry={TABLE_LEG}>
                 <meshStandardMaterial color="#2b1a10" />
               </mesh>
             ))}
@@ -569,9 +694,8 @@ function SpiralStair({ wood }: { wood: WoodMat }) {
   }, []);
   return (
     <group>
-      <instancedMesh ref={ref} args={[undefined, undefined, steps]} castShadow receiveShadow>
-        <boxGeometry args={[2.2, 0.12, 0.7]} />
-        <meshStandardMaterial {...wood} color="#8a6448" roughness={0.7} />
+      <instancedMesh ref={ref} args={[TREAD, undefined, steps]} castShadow receiveShadow>
+        <meshStandardMaterial {...wood} color="#8a6448" />
       </instancedMesh>
       <mesh position={[STAIR_CENTRE[0], ROOM.storeyHeight / 2, STAIR_CENTRE[1]]} castShadow>
         <cylinderGeometry args={[0.22, 0.22, ROOM.storeyHeight, 12]} />

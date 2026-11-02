@@ -63,6 +63,8 @@ export function Lighting({ focusY, quality }: { focusY: { current: number }; qua
     c.dir.lerp(target.direction, k).normalize();
 
     skyMaterial.color.copy(c.sky);
+    // The environment map stands in for light bouncing round the room: strong by day, faint at night
+    scene.environmentIntensity = 0.04 + c.fill * 0.7;
     // Stained glass: bright and true by day, a dim blue glow by night
     const lum = c.sky.r * 0.3 + c.sky.g * 0.6 + c.sky.b * 0.1;
     glass.copy(c.sky).lerp(WHITE, 0.55).multiplyScalar(0.3 + lum);
@@ -77,13 +79,15 @@ export function Lighting({ focusY, quality }: { focusY: { current: number }; qua
     if (sun.current) {
       sun.current.color.copy(c.light);
       sun.current.intensity = c.intensity;
-      sun.current.position.copy(tmp.copy(c.dir).multiplyScalar(40)).add(sunTarget.position);
+      // Far enough out that the whole dome sits inside the shadow camera's range
+      sun.current.position.copy(tmp.copy(c.dir).multiplyScalar(160)).add(sunTarget.position);
       sun.current.target = sunTarget;
     }
     if (hemi.current) {
       // Sky fill by day; after dark the hundreds of candles give the room a warm glow instead
       hemi.current.color.copy(c.light).lerp(c.sky, 0.5).lerp(CANDLELIGHT, c.candles * 0.7);
-      hemi.current.intensity = c.fill * 2.4 + c.candles * 0.55;
+      // (stronger now the walls block direct sun: by day this is the light bouncing in from the oculus and windows)
+      hemi.current.intensity = c.fill * 2.8 + c.candles * 0.4;
     }
     // A soft "reading light" just above the viewer, so covers facing you are always legible.
     // It fades with distance, leaving the far walls to the windows, lanterns and chandeliers
@@ -111,7 +115,7 @@ export function Lighting({ focusY, quality }: { focusY: { current: number }; qua
     flameMaterial.color.setRGB(1, 0.62, 0.28).multiplyScalar(0.6 + c.candles * 0.4);
   });
 
-  const shadowSize = quality === "high" ? 2048 : 1024;
+  const shadowSize = quality === "high" ? 4096 : 1024;
   return (
     <>
       <hemisphereLight ref={hemi} args={["#ffffff", "#2a1a10", 0.4]} />
@@ -119,14 +123,18 @@ export function Lighting({ focusY, quality }: { focusY: { current: number }; qua
         ref={sun}
         castShadow
         shadow-mapSize={[shadowSize, shadowSize]}
-        shadow-camera-left={-9}
-        shadow-camera-right={9}
-        shadow-camera-top={9}
-        shadow-camera-bottom={-9}
+        // Covers the whole room around where you're looking: the walls and vault cast shadows, so
+        // daylight only reaches in through the oculus, as it would in a real rotunda
+        shadow-camera-left={-32}
+        shadow-camera-right={32}
+        shadow-camera-top={32}
+        shadow-camera-bottom={-32}
         shadow-camera-near={1}
-        shadow-camera-far={90}
+        shadow-camera-far={340}
         shadow-bias={-0.0004}
         shadow-normalBias={0.02}
+        // Soft-edged shadows (filter radius in shadow-map texels)
+        shadow-radius={quality === "high" ? 5 : 2}
       />
       <primitive object={sunTarget} />
       <pointLight ref={reading} distance={20} decay={1.2} />

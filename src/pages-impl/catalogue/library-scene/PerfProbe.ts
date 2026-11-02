@@ -5,9 +5,10 @@ import { useEffect, useRef } from "react";
 
 /**
  * Inside the Canvas: measures the frame rate for a few seconds after start-up and reports a
- * device that can't keep up (or loses the WebGL context), so the page can switch to the grid.
+ * device that can't keep up (below `minFps`, or losing the WebGL context: reported as 0 fps), so
+ * the scene can drop to its lighter tier, or the page to the grid.
  */
-export function PerfProbe({ onSlow }: { onSlow: () => void }) {
+export function PerfProbe({ minFps, onSlow }: { minFps: number; onSlow: (fps: number) => void }) {
   const gl = useThree((s) => s.gl);
   const m = useRef({ start: 0, frames: 0, done: false });
 
@@ -22,8 +23,9 @@ export function PerfProbe({ onSlow }: { onSlow: () => void }) {
 
   useEffect(() => {
     const canvas = gl.domElement;
-    canvas.addEventListener("webglcontextlost", onSlow);
-    return () => canvas.removeEventListener("webglcontextlost", onSlow);
+    const lost = () => onSlow(0);
+    canvas.addEventListener("webglcontextlost", lost);
+    return () => canvas.removeEventListener("webglcontextlost", lost);
   }, [gl, onSlow]);
 
   useFrame(() => {
@@ -40,7 +42,8 @@ export function PerfProbe({ onSlow }: { onSlow: () => void }) {
     const elapsed = now - s.start;
     if (elapsed > 4000) {
       s.done = true;
-      if ((s.frames / elapsed) * 1000 < 20) onSlow();
+      const fps = (s.frames / elapsed) * 1000;
+      if (fps < minFps) onSlow(fps);
     }
   });
   return null;

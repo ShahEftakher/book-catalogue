@@ -60,6 +60,34 @@ function leatherOverlay(): HTMLCanvasElement {
   v.addColorStop(1, "rgba(0,0,0,0.5)");
   x.fillStyle = v;
   x.fillRect(0, 0, CW, CH);
+  // Wear: edges and corners rubbed lighter by years of hands, a few creases and scuffs
+  for (let i = 0; i < 4; i++) {
+    x.strokeStyle = `rgba(235,215,180,${0.07 - i * 0.015})`;
+    x.lineWidth = 3 + i * 3;
+    x.strokeRect(i * 2, i * 2, CW - i * 4, CH - i * 4);
+  }
+  for (const [cx, cy] of [
+    [0, 0],
+    [CW, 0],
+    [0, CH],
+    [CW, CH],
+  ]) {
+    const g = x.createRadialGradient(cx, cy, 0, cx, cy, 46);
+    g.addColorStop(0, "rgba(240,220,185,0.22)");
+    g.addColorStop(1, "rgba(240,220,185,0)");
+    x.fillStyle = g;
+    x.fillRect(cx - 46, cy - 46, 92, 92);
+  }
+  for (let i = 0; i < 26; i++) {
+    x.strokeStyle = `rgba(${Math.random() < 0.5 ? "0,0,0" : "245,225,190"},${0.04 + Math.random() * 0.06})`;
+    x.lineWidth = 0.6 + Math.random();
+    x.beginPath();
+    const sx = Math.random() * CW;
+    const sy = Math.random() * CH;
+    x.moveTo(sx, sy);
+    x.quadraticCurveTo(sx + (Math.random() - 0.5) * 60, sy + (Math.random() - 0.5) * 60, sx + (Math.random() - 0.5) * 120, sy + (Math.random() - 0.5) * 120);
+    x.stroke();
+  }
   return overlay;
 }
 
@@ -77,7 +105,16 @@ function wrapLines(x: CanvasRenderingContext2D, text: string, maxWidth: number):
   return lines.slice(0, 5);
 }
 
-const GOLD = "#d9b45a";
+/** Gold leaf catches the light unevenly: a diagonal sheen instead of one flat yellow. */
+function foil(x: CanvasRenderingContext2D, w: number, h: number) {
+  const g = x.createLinearGradient(0, 0, w, h);
+  g.addColorStop(0, "#a8803a");
+  g.addColorStop(0.3, "#f0d68a");
+  g.addColorStop(0.5, "#c69a48");
+  g.addColorStop(0.72, "#f5e0a0");
+  g.addColorStop(1, "#9c7432");
+  return g;
+}
 // Cover texture size: sharp enough up close, small enough to keep many books in GPU memory
 const CW = 384;
 const CH = 576;
@@ -89,13 +126,14 @@ function giltCover(book: TextureBook, binding: string): CanvasTexture {
     x.fillStyle = binding;
     x.fillRect(0, 0, CW, CH);
     x.drawImage(leatherOverlay(), 0, 0);
-    x.strokeStyle = GOLD;
+    const gold = foil(x, CW, CH);
+    x.strokeStyle = gold;
     x.lineWidth = 4;
     x.strokeRect(22, 22, CW - 44, CH - 44);
     x.lineWidth = 1.5;
     x.strokeRect(34, 34, CW - 68, CH - 68);
     // Corner flourishes
-    x.fillStyle = GOLD;
+    x.fillStyle = gold;
     for (const [cx, cy] of [
       [34, 34],
       [CW - 34, 34],
@@ -124,7 +162,14 @@ function spine(book: TextureBook, binding: string): CanvasTexture {
     x.fillStyle = binding;
     x.fillRect(0, 0, 64, CH);
     x.drawImage(leatherOverlay(), 0, 0, 64, CH, 0, 0, 64, CH);
-    x.fillStyle = GOLD;
+    // Raised bands across the spine, with a highlight on top and a shadow below
+    for (const y of [92, CH - 92]) {
+      x.fillStyle = "rgba(0,0,0,0.35)";
+      x.fillRect(0, y + 5, 64, 4);
+      x.fillStyle = "rgba(255,235,200,0.18)";
+      x.fillRect(0, y - 3, 64, 4);
+    }
+    x.fillStyle = foil(x, 64, CH);
     for (const y of [45, 54, CH - 54, CH - 45]) x.fillRect(7, y, 50, 2);
     x.save();
     x.translate(32, CH / 2);
@@ -152,12 +197,20 @@ let edge: CanvasTexture | null = null;
 let page: CanvasTexture | null = null;
 export function pageEdgeTexture(): CanvasTexture {
   return (edge ??= canvasTexture(64, 256, (x) => {
-    x.fillStyle = "#e9dfc4";
+    // Old paper: cream, not white, with fine page lines and darker, dustier ends
+    x.fillStyle = "#ddcfae";
     x.fillRect(0, 0, 64, 256);
-    for (let i = 0; i < 64; i += 2) {
-      x.fillStyle = `rgba(120,100,60,${Math.random() * 0.25})`;
-      x.fillRect(i, 0, 1, 256);
+    for (let i = 0; i < 64; i++) {
+      x.fillStyle = `rgba(110,88,52,${0.06 + Math.random() * 0.2})`;
+      x.fillRect(i, 0, 0.6, 256);
     }
+    const dust = x.createLinearGradient(0, 0, 0, 256);
+    dust.addColorStop(0, "rgba(90,70,40,0.35)");
+    dust.addColorStop(0.12, "rgba(90,70,40,0)");
+    dust.addColorStop(0.88, "rgba(90,70,40,0)");
+    dust.addColorStop(1, "rgba(90,70,40,0.35)");
+    x.fillStyle = dust;
+    x.fillRect(0, 0, 64, 256);
   }));
 }
 export function innerPageTexture(): CanvasTexture {
@@ -239,6 +292,17 @@ function schedule(job: () => void) {
   };
   requestAnimationFrame(pump);
 }
+
+/** Upload a texture to the GPU inside the budgeted queue (one big texture per frame at most). */
+export function uploadLater(t: Texture): Promise<void> {
+  return new Promise((resolve) =>
+    schedule(() => {
+      upload(t);
+      resolve();
+    }),
+  );
+}
+
 let fontsReady: Promise<unknown> | null = null;
 
 /** Faces for a book: generated gilt textures at once, upgraded to the cover photo when it loads. */

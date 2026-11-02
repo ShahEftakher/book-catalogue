@@ -1,8 +1,9 @@
 "use client";
 
+import { Environment } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
 import { Suspense, startTransition, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
-import { Vector3 } from "three";
+import { NeutralToneMapping, Vector3 } from "three";
 import type { BookListItem } from "@/lib/books";
 import { BookHelix } from "./BookHelix";
 import { setTextureUploader } from "./bookTextures";
@@ -10,6 +11,8 @@ import { CameraRig, ZOOM, createRig, zoomBy } from "./CameraRig";
 import { DetailsPanel } from "./DetailsPanel";
 import { helixPlacement, helixTop, indexAtHeight, storeyCount } from "./helix";
 import { Lighting } from "./Lighting";
+import { HDRI_URL } from "./materials";
+import { PostFx } from "./PostFx";
 import { type Quality, Room } from "./Room";
 import { PerfProbe } from "./PerfProbe";
 import { ZoomControls } from "./ZoomControls";
@@ -45,7 +48,16 @@ function Ready({ onReady }: { onReady: () => void }) {
 /** The 3D library: a helix of the owner's books inside a stone rotunda lit by the real sky. */
 export default function LibraryScene({ books, onReady, onSlow }: Props) {
   const view = useViewport();
-  const quality: Quality = view.mobile || view.coarse ? "low" : "high";
+  // A desktop that can't hold a smooth frame rate drops to the phone tier before the grid
+  const [degraded, setDegraded] = useState(false);
+  const quality: Quality = view.mobile || view.coarse || degraded ? "low" : "high";
+  const handleSlow = useCallback(
+    (fps: number) => {
+      if (quality === "high" && fps > 0) setDegraded(true);
+      else onSlow();
+    },
+    [quality, onSlow],
+  );
   // One mutable rig object for the lifetime of the scene (input writes it, CameraRig reads it)
   const [rig] = useState(createRig);
   const focusY = useRef(rig.travel);
@@ -216,8 +228,14 @@ export default function LibraryScene({ books, onReady, onSlow }: Props) {
         shadows="percentage"
         dpr={[1, quality === "high" ? 2 : 1.5]}
         camera={{ fov: 50, near: 0.1, far: 400, position: [0, 3, 11] }}
+        // Kept on even on desktop (where the post pass does its own MSAA): the context can't be
+        // recreated, and a desktop that drops to the light tier renders directly again
         gl={{ antialias: true, powerPreference: "high-performance" }}
-        onCreated={({ gl }) => setTextureUploader(gl)}
+        onCreated={({ gl }) => {
+          // Khronos PBR Neutral: keeps the leather and stained-glass colours true instead of washing them out
+          gl.toneMapping = NeutralToneMapping;
+          setTextureUploader(gl);
+        }}
         onPointerMissed={() => {
           if (isDrag()) return;
           setSelectedId(null);
@@ -225,6 +243,8 @@ export default function LibraryScene({ books, onReady, onSlow }: Props) {
         }}
       >
         <Suspense fallback={null}>
+          {/* Image-based lighting: reflections for metal, varnish and leather (Lighting sets its strength) */}
+          <Environment files={HDRI_URL} />
           <Room storeys={storeys} quality={quality} />
           <BookHelix
             books={books}
@@ -238,9 +258,11 @@ export default function LibraryScene({ books, onReady, onSlow }: Props) {
             onSelect={select}
           />
           <Ready onReady={onReady} />
-          <PerfProbe onSlow={onSlow} />
+          {/* Re-measures after a tier change; the full tier should hold 40 fps, the light one 20 */}
+          <PerfProbe key={quality} minFps={quality === "high" ? 40 : 20} onSlow={handleSlow} />
         </Suspense>
         <Lighting focusY={focusY} quality={quality} />
+        {quality === "high" && <PostFx />}
         <CameraRig
           rig={rig}
           maxTravel={maxTravel}

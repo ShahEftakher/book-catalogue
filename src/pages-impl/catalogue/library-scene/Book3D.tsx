@@ -12,13 +12,15 @@ import {
   Object3D,
   PlaneGeometry,
   Quaternion,
-  type Texture,
+  Vector2,
   Vector3,
 } from "three";
+import { roundedBox } from "./geometry";
 import type { BookListItem } from "@/lib/books";
 import { blankTexture, innerPageTexture, pageEdgeTexture, useBookFaces } from "./bookTextures";
 import { BOOK, bindingColor, hashUnit, helixPlacement } from "./helix";
 import { HoverLabel } from "./HoverLabel";
+import type { Pbr } from "./materials";
 
 export type BookMode = "rest" | "hover" | "selected";
 
@@ -31,7 +33,7 @@ type Props = {
   reducedMotion: boolean;
   /** Where the opened book sits in front of the camera, in camera space */
   selectedOffset: Vector3;
-  leather: { map: Texture; normal: Texture };
+  leather: Pbr;
   onPointerOver: (e: ThreeEvent<PointerEvent>) => void;
   onPointerOut: (e: ThreeEvent<PointerEvent>) => void;
   onClick: (e: ThreeEvent<MouseEvent>) => void;
@@ -41,11 +43,12 @@ const { width: W, height: H, depth: D, board: T } = BOOK;
 const GOLD = new Color("#d9b45a");
 const Z_AXIS = new Vector3(0, 0, 1);
 
-// Every book has the same shape, so geometries are created once and shared
+// Every book has the same shape, so geometries are created once and shared. Boards and spine
+// have softly rounded edges (they keep the box's per-face material groups) so they catch a highlight
 const GEO = {
-  board: new BoxGeometry(W, H, T),
-  block: new BoxGeometry(W - 0.04, H - 0.04, D - 2 * T),
-  spine: new BoxGeometry(T, H, D),
+  board: roundedBox(W, H, T, 2, 0.012),
+  block: new BoxGeometry(W - 0.05, H - 0.05, D - 2 * T),
+  spine: roundedBox(T + 0.012, H, D, 2, 0.014),
   leaf: new PlaneGeometry(W - 0.05, H - 0.05),
 };
 
@@ -53,7 +56,7 @@ const GEO = {
 let pageMats: { edge: MeshStandardMaterial; inner: MeshStandardMaterial; leaf: MeshStandardMaterial } | null = null;
 function sharedPageMaterials() {
   return (pageMats ??= {
-    edge: new MeshStandardMaterial({ map: pageEdgeTexture(), roughness: 0.95 }),
+    edge: new MeshStandardMaterial({ map: pageEdgeTexture(), roughness: 0.9 }),
     inner: new MeshStandardMaterial({ map: innerPageTexture(), roughness: 0.95 }),
     leaf: new MeshStandardMaterial({ map: innerPageTexture(), roughness: 0.95, side: DoubleSide }),
   });
@@ -96,14 +99,23 @@ export function Book3D({
   // Three materials per book (leather, cover, spine); box faces reuse them by index
   const mats = useMemo(() => {
     const leatherMat = new MeshStandardMaterial({
-      map: leather.map,
-      normalMap: leather.normal,
+      ...leather,
       color: new Color(binding).multiplyScalar(3.6),
-      roughness: 0.5,
+      roughness: 1, // the leather's own roughness map drives the sheen
     });
     // Start with a placeholder map so swapping in the real texture needs no shader recompile
-    const cover = new MeshStandardMaterial({ map: blankTexture(), color: binding, emissive: GOLD, emissiveIntensity: 0, roughness: 0.5 });
-    const spine = new MeshStandardMaterial({ map: blankTexture(), color: binding, roughness: 0.55 });
+    // Covers get the leather's grain and sheen too, so they don't read as flat printed card
+    const cover = new MeshStandardMaterial({
+      map: blankTexture(),
+      normalMap: leather.normalMap,
+      normalScale: new Vector2(0.6, 0.6),
+      roughnessMap: leather.roughnessMap,
+      color: binding,
+      emissive: GOLD,
+      emissiveIntensity: 0,
+      roughness: 0.9,
+    });
+    const spine = new MeshStandardMaterial({ map: blankTexture(), normalMap: leather.normalMap, roughnessMap: leather.roughnessMap, color: binding, roughness: 0.9 });
     const page = sharedPageMaterials();
     const L = leatherMat;
     return {

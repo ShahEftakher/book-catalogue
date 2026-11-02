@@ -148,6 +148,40 @@ lit by the real sky over Dhaka.
 - ✅ **Candlelight:** a few candles stay lit by day. From dusk, a warm fill and two chandelier
   lights on the storey you're looking at carry the room. The reading light near the camera
   falls off with distance, so far walls stay moody.
+- ✅ **Render quality** (feedback: "looks like an old video game"), done through textures and
+  lighting rather than showy effects:
+  - **Full PBR maps:** colour, normal and packed AO/roughness ("arm") maps. Desktop streams 2k
+    colour and normal maps in after the 1k set and uploads them one per frame; phones stay at
+    1k. Anisotropy is set to the GPU maximum.
+  - **Anti-tiling:** walls, floor and vault use a hex-grid no-tile sampling shader (desktop),
+    plus world-space grime on every device: damp walls near the floor, worn paths on the floor
+    (`antiTile.ts`).
+  - **Image-based lighting** from a CC0 church-interior HDRI (`church_museum`). Its strength
+    follows the time of day.
+  - **Tone mapping:** Khronos "Neutral" keeps colours true. AgX was tried and washed out the
+    leathers.
+  - **Ambient occlusion:** three's own GTAO pass at half resolution, desktop only (`PostFx.tsx`).
+    `n8ao` 2.0.1 crashes with three r187, so it isn't used.
+  - **Shadows:** the room shell (wall and vault) now casts shadows, so sunlight only enters
+    through the oculus. Before, sunlit faces showed through solid walls as glowing white edges.
+    The shadow camera covers the whole room, with soft PCF (radius 5, 4096 on desktop).
+  - **Books:**
+    - rounded boards and spine (`geometry.ts`'s `roundedBox`, which fixes three's
+      RoundedBoxGeometry texture coordinates)
+    - leather grain and wear on the covers
+    - foil-shaded gilt
+    - cream page edges
+    - wall-shelf spines drawn from a 32-design procedural atlas (`spineAtlas.ts`) in one
+      instanced draw call
+  - **Props:**
+    - bevelled bookcase uprights, sills, table tops and stair treads
+    - turned table legs
+    - lathe-moulded column bases and capitals
+    - 2× stained-glass canvases with hand-cut panes and seedy glass
+  - **Tiers:** desktop gets everything. Phones get 1k maps, grime without the no-tile sampling,
+    and no AO pass. A desktop under 40 fps drops to the phone tier first, and only falls back
+    to the grid under 20 fps.
+  - **Asset weight:** about 24 MB on disk. Desktop downloads about 20 MB, phones about 6 MB.
 - ✅ **Covers:** the real cover photo through the same-origin proxy `/api/cover` (allowed hosts
   only); otherwise a generated leather cover with a gilt frame and the title in EB Garamond or
   Noto Serif Bengali. Spines carry gilt titles.
