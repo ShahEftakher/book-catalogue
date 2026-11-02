@@ -9,7 +9,8 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-latin), var(--font-bengali), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
+  --font-heading: var(--font-serif-latin), var(--font-serif-bengali), Georgia, serif;
+  --font-serif: var(--font-serif-latin), var(--font-serif-bengali), Georgia, serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -131,4 +132,102 @@
 /* Bengali script needs a little more line height for its vowel signs */
 :lang(bn) {
   line-height: 1.6;
+}
+
+/*
+ * Parchment and ink: the site's colours follow the sun over Dhaka.
+ * <html data-phase="day|dawn|dusk|night"> is set by the server and refreshed by DaylightProvider.
+ */
+html[data-phase="day"] {
+  --background: #f4ead5;
+  --foreground: #2b1d12;
+  --card: #f8f0de;
+  --card-foreground: #2b1d12;
+  --popover: #f8f0de;
+  --popover-foreground: #2b1d12;
+  --primary: #6e2a1c;
+  --primary-foreground: #f8f0de;
+  --secondary: #eadcc0;
+  --secondary-foreground: #3b2716;
+  --muted: #ebdfc6;
+  --muted-foreground: #6b5640;
+  --accent: #e6d5b3;
+  --accent-foreground: #2b1d12;
+  --border: #d6c3a0;
+  --input: #cdb892;
+  --ring: #a07c48;
+}
+
+html[data-phase="dawn"] {
+  --background: #f3e2cf;
+  --foreground: #2d1c14;
+  --card: #f7eadb;
+  --card-foreground: #2d1c14;
+  --popover: #f7eadb;
+  --popover-foreground: #2d1c14;
+  --primary: #7a3320;
+  --primary-foreground: #f7eadb;
+  --secondary: #ecd5bf;
+  --secondary-foreground: #3d2418;
+  --muted: #ecd6bf;
+  --muted-foreground: #6e5242;
+  --accent: #e8cdb0;
+  --accent-foreground: #2d1c14;
+  --border: #dcc0a0;
+  --input: #d2b391;
+  --ring: #b07a4c;
+}
+
+html[data-phase="dusk"] {
+  --background: #ecd7bd;
+  --foreground: #2a1a10;
+  --card: #f2e2cb;
+  --card-foreground: #2a1a10;
+  --popover: #f2e2cb;
+  --popover-foreground: #2a1a10;
+  --primary: #7a2e1c;
+  --primary-foreground: #f2e2cb;
+  --secondary: #e3c9a8;
+  --secondary-foreground: #3a2214;
+  --muted: #e3c9a8;
+  --muted-foreground: #6a4e38;
+  --accent: #dfc19c;
+  --accent-foreground: #2a1a10;
+  --border: #cfae88;
+  --input: #c6a47c;
+  --ring: #b0773e;
+}
+
+html[data-phase="night"] {
+  --background: #0f1424;
+  --foreground: #e9dfc8;
+  --card: #161c30;
+  --card-foreground: #e9dfc8;
+  --popover: #161c30;
+  --popover-foreground: #e9dfc8;
+  --primary: #d9b45a;
+  --primary-foreground: #1a1408;
+  --secondary: #1f2740;
+  --secondary-foreground: #e9dfc8;
+  --muted: #1b2236;
+  --muted-foreground: #a39a86;
+  --accent: #232c47;
+  --accent-foreground: #f0e6cf;
+  --border: #2c3552;
+  --input: #343e5e;
+  --ring: #d9b45a;
+}
+
+html[data-phase] body {
+  transition:
+    background-color 300ms ease,
+    color 300ms ease;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  letter-spacing: 0;
 }

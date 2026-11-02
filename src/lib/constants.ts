@@ -36,3 +36,6 @@ export const LANGUAGES = [
 export function languageLabel(code: string): string {
   return LANGUAGES.find((l) => l.code === code)?.label ?? code;
 }
+
+/** Where the library "is": sun and moon times are calculated for Dhaka (UTC+6, no DST). */
+export const DHAKA = { lat: 23.8103, lng: 90.4125, utcOffsetHours: 6 } as const;

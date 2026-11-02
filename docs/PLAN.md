@@ -6,7 +6,7 @@ zero-ops as possible.
 
 **Legend:** ✅ done · 🟡 built but not yet verified · ⬜ to do · ❌ decided against
 
-_Last updated: 2026-10-28 (after pass 1 + mobile pass)._
+_Last updated: 2026-11-01 (after pass 1, mobile pass and the 3D library)._
 
 ---
 
@@ -16,6 +16,7 @@ _Last updated: 2026-10-28 (after pass 1 + mobile pass)._
 |---|---|
 | Pass 1: catalogue, owner sign-in, ISBN/barcode add, Bangla support | ✅ |
 | Mobile responsiveness + installable web app | ✅ |
+| 3D ancient library home view + time-of-day theme | ✅ (🟡 real-phone check) |
 | Pass 2: photo identification, lending, import/export, stats | ⬜ |
 | Pass 3: Vercel deploy (Neon + Blob + GitHub OAuth), then Kindle and other v2 items | ⬜ |
 
@@ -124,6 +125,71 @@ codes starting 978/979 with a valid checksum are accepted.
 - ✅ Installable web app: manifest, generated icons, safe-area insets for notched phones
 - 🟡 Real-phone check of camera, flashlight and vibration (do this on the Vercel URL)
 
+## 3D ancient library (home view)
+
+The library page is a 3D stone rotunda. The owner's books stand in a helix tower at its centre,
+lit by the real sky over Dhaka.
+
+- ✅ **Helix tower** of real 3D books (back, page block, spine, a front board on a hinge, a first
+  leaf). Books follow the current sort order, and search and filters re-flow the helix.
+- ✅ **Room:** a three-storey rotunda (radius 30 m) that gets taller as the collection grows:
+  - a gothic look modelled on a reference picture: grey castle stone, dark timber bookcases
+    (sectioned by uprights, with cornice and plinth), thousands of instanced shelf spines
+  - upper galleries behind wrought-iron railings (one alpha-tested texture), stone columns
+    carrying iron lanterns
+  - stained-glass windows: twin pointed lancets under a rose, in dressed-stone frames; the
+    glass is drawn on a canvas and glows with the sky colour
+  - a planked timber vault with ribs and ring beams, open oculus
+  - brass ring chandeliers with candles on every storey, Persian-style rugs under the reading
+    tables, and a spiral stair
+- ✅ **Textures:** Poly Haven CC0 photo textures (castle_wall_slates, large_grey_tiles,
+  worn_planks, brown_leather), fetched with `pnpm assets:fetch` into `public/assets/polyhaven/`
+  (5.1 MB, credits in `CREDITS.md`). Stained glass, ironwork and rugs are procedural canvases.
+- ✅ **Candlelight:** a few candles stay lit by day. From dusk, a warm fill and two chandelier
+  lights on the storey you're looking at carry the room. The reading light near the camera
+  falls off with distance, so far walls stay moody.
+- ✅ **Covers:** the real cover photo through the same-origin proxy `/api/cover` (allowed hosts
+  only); otherwise a generated leather cover with a gilt frame and the title in EB Garamond or
+  Noto Serif Bengali. Spines carry gilt titles.
+- ✅ **Hover:** the book slides out, tilts toward you, grows to ×1.35 with a spring, bobs, and its
+  gilt shimmers once. Neighbouring books lean away, and a parchment name label (Bangla-aware)
+  rises in.
+- ✅ **Click / Enter:** the book flies in front of you, the cover swings open, the first leaf
+  turns, and a details panel appears (a side card on desktop, a bottom sheet on phones) with
+  "Open book page".
+- ✅ **Controls:**
+  - drag to spin, scroll or drag vertically to climb
+  - zoom: +/−/reset buttons, Ctrl/⌘ + scroll or a trackpad pinch, touch pinch, and the
+    + / − / 0 keys. Zooming out goes from close-up to an overview of the whole tower; past the
+    gallery columns the lens widens instead of the camera moving back
+  - ←/→ to move between books, Enter to open, Esc to close
+  - touch: first tap highlights, second tap opens
+- ✅ **Ambient motion:** a slow orbit after 4 s idle (off with reduced motion)
+- ✅ **Time of day:** real Dhaka sun times (suncalc) → night / dawn / day / dusk, blended
+  continuously:
+  - sun or moon direction, with moonlight dimmed by the moon's phase
+  - window and oculus sky colour
+  - candles light up from dusk
+  - a soft reading light keeps covers legible
+- ✅ **Site theme:** parchment and ink by day, amber at dawn and dusk, deep blue with candle gold at
+  night. The server renders it, so there's no flash; serif headings.
+- ✅ **Performance:**
+  - three.js is lazy-loaded (not in the first JS load)
+  - books near the camera get full detail; the rest are one instanced mesh
+  - an LRU cache keeps up to 80 cover photos and 90 generated covers
+  - books share geometries and use 3 materials each; generated covers are drawn and uploaded
+    to the GPU a few per frame (4 ms budget) from CPU-backed canvases, so scrolling never
+    stalls; room textures are built once
+  - measured on an Apple M5 while scrolling 155 books: a steady 60 fps (slowest frame 16.8 ms),
+    no long main-thread tasks
+  - phones get lower DPR, a smaller shadow map and fewer spines
+- ✅ **Fallback:** no WebGL, or under 20 fps during start-up → the plain grid, remembered for 7 days
+  with a "Try 3D again" link. Screen readers get a hidden list of book links.
+- ✅ **Dev-only URL switches:** `?time=HH:MM` (Dhaka time) and `?view=3d|grid`
+- 🟡 Real-phone check of frame rate and touch gestures on the Vercel URL
+- ⬜ **Later:** upload a cover photo (front texture), or a full jacket scan mapped across back,
+  spine and front (`jacketUrl`). `bookTextures.ts` already takes a texture per face.
+
 ## Kindle (v2)
 Amazon has no public Kindle API, so everything works from files you export yourself.
 - ✅ Prepared: `kindle` format, nullable unique `asin` column, several formats per book
@@ -136,7 +202,7 @@ Amazon has no public Kindle API, so everything works from files you export yours
 ## Later (v2+)
 - ⬜ Wishlist, series tracking, reading goals, shareable shelf links
 - ⬜ Shelf photo: detect many spines in one picture
-- ⬜ Dark mode
+- ✅ Dark mode (night phase of the time-of-day theme)
 - ⬜ Offline support / service worker (manifest and home-screen install are already done)
 - ⬜ Semantic search or "what should I read next" via the Claude API
 
@@ -212,6 +278,13 @@ docs/           this plan
 | Photo identification | **Claude API**: `claude-haiku-5-5`, falling back to `claude-sonnet-5-5` | Pass 2. The larger model reads Bengali script more reliably |
 | Fonts | Geist (Latin) + Noto Sans Bengali via `next/font` | |
 | Mobile | `max-sm:` touch sizes, bottom-sheet filters, sticky save bar, web app manifest | Done early (planned as v2) because the owner adds books from a phone |
+| 3D | **three.js + @react-three/fiber 9 + drei 10** | Declarative scene in React 19; drei for textures and HTML labels |
+| Time of day | **suncalc** for Dhaka (23.81, 90.41); phases from civil dawn, sunrise ±30 min, sunset ±30 min, civil dusk | Real sun and moon; the server renders the phase, the client updates each minute |
+| Site theme | **Parchment and ink**: shadcn tokens remapped per `data-phase`; EB Garamond + Noto Serif Bengali headings | Matches the ancient library; every page inherits it |
+| 3D textures | **Poly Haven CC0**, 1k diffuse + normal, committed to the repo | Photo-real, no licence worries, about 5 MB |
+| Cover images in WebGL | Same-origin proxy `/api/cover`, with an allow-list and per-hop redirect checks | Google Books images send no CORS headers |
+| Weak devices | Automatic grid fallback only (no toggle), remembered for 7 days | Owner's choice |
+| Lint | React Compiler `immutability` rule off for `library-scene/` only | R3F animates by mutating three.js objects in `useFrame` |
 | Unit tests | **Vitest** | ISBN, Bangla, lookup mapping, validation |
 | E2E tests | **Playwright** (Chromium) on desktop, iPhone 13 and Pixel 7 profiles, plus a 360px overflow/tap-target check | Only Chromium is installed; the iPhone profile runs in Chromium |
 | Git | Repo-local identity Eftakher Sazid `<eftakharsazid@gmail.com>`; branch `main`; GitHub over SSH | Separate from the global (work) identity |
@@ -247,6 +320,9 @@ docs/           this plan
     title → delete it
   - 360px check: no sideways scroll, nothing too small to tap
 - ✅ Checked by hand in the browser at 360, 390, 768px and desktop
+- ✅ 3D library: unit tests for daylight phases, sky blending, helix maths and the cover
+  allow-list; Playwright tests for keyboard → open → book page, the no-WebGL fallback and the
+  time-of-day theme; checked by eye at noon, dusk and night, on desktop and phone
 - ⬜ Pass 2 checks:
   - photo-identify a 978-984 Bangla book from its cover and imprint page
   - lend a book with a past due date and see it marked overdue

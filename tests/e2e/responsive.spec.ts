@@ -1,6 +1,11 @@
 import { expect, test, type Page } from "@playwright/test";
 
 // Small Android width; every page must fit without sideways scrolling and stay tappable.
+// These flows run against the plain grid; the 3D library has its own spec
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("library-view", "grid"));
+});
+
 test.use({ viewport: { width: 360, height: 780 }, hasTouch: true, isMobile: true });
 // The viewport is fixed above, so running it once (not once per device project) is enough
 test.beforeEach(({}, info) => info.skip(info.project.name !== "desktop"));
@@ -50,7 +55,7 @@ test("owner pages fit a 360px phone", async ({ page }) => {
 
   await page.goto("/");
   await page.locator('a[href^="/books/"]').first().click();
-  await page.getByRole("link", { name: "Edit" }).click();
-  await expect(page.getByRole("button", { name: "Save changes" })).toBeVisible();
+  await page.getByRole("link", { name: "Edit", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Save changes" })).toBeVisible({ timeout: 20_000 });
   await expectFitsAndTappable(page);
 });

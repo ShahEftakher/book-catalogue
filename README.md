@@ -2,7 +2,10 @@
 
 My personal library — Bangla and English books. Anyone with the link can browse; only the owner can sign in to add or edit.
 
-**Stack:** Next.js 16 (App Router) · TypeScript · Tailwind + shadcn/ui · Postgres (Docker locally, Neon on Vercel) · Drizzle ORM · Auth.js (GitHub) · Zod + react-hook-form · zxing barcode scanning · pnpm.
+The home page is a **3D ancient library**: your books stand in a helix inside a stone rotunda,
+lit by the real sun or moon over Dhaka. The whole site follows the time of day.
+
+**Stack:** Next.js 16 (App Router), three.js / react-three-fiber, · TypeScript · Tailwind + shadcn/ui · Postgres (Docker locally, Neon on Vercel) · Drizzle ORM · Auth.js (GitHub) · Zod + react-hook-form · zxing barcode scanning · pnpm.
 
 ## Getting started
 
@@ -32,7 +35,12 @@ Create an OAuth app at GitHub → Settings → Developer settings → OAuth Apps
 | `pnpm test:e2e` | Playwright smoke test (needs the dev DB; `pnpm exec playwright install chromium` once) |
 | `pnpm db:up` | Start local Postgres (Docker) |
 | `pnpm db:generate` / `db:migrate` | Create / apply Drizzle migrations |
-| `pnpm db:studio` / `db:seed` | Browse the DB / add sample books |
+| `pnpm db:studio` / `db:seed` | Browse the DB / add 4 sample books |
+| `pnpm db:seed:dummy` | Add ~150 sample books tagged `sample` (helps judge the 3D scale); `pnpm db:seed:dummy --remove` deletes them again |
+| `pnpm assets:fetch` | Re-download the Poly Haven textures for the 3D library |
+
+Dev-only URL switches: `?time=21:00` previews any Dhaka time of day, `?view=grid` / `?view=3d`
+forces the plain grid or the 3D library.
 
 ## Project layout
 

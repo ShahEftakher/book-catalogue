@@ -1,4 +1,9 @@
 import { expect, test } from "@playwright/test";
+// These flows run against the plain grid; the 3D library has its own spec
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("library-view", "grid"));
+});
+
 
 test("browse, sign in, add a Bangla book manually, find it by romanized title", async ({ page }, info) => {
   // Device projects run in parallel, so each run needs its own book
@@ -7,7 +12,7 @@ test("browse, sign in, add a Bangla book manually, find it by romanized title", 
   const latin = `Porikkha ${id}`;
 
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Library" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Library", exact: true })).toBeVisible();
 
   // Admin pages bounce anonymous visitors to sign-in
   await page.goto("/admin/books/new");
@@ -31,7 +36,7 @@ test("browse, sign in, add a Bangla book manually, find it by romanized title", 
   await page.getByRole("link", { name: new RegExp(unique) }).click();
 
   // Clean up
-  await page.getByRole("link", { name: "Edit" }).click();
+  await page.getByRole("link", { name: "Edit", exact: true }).click();
   page.once("dialog", (d) => d.accept());
   await page.getByRole("button", { name: "Delete" }).click();
   await expect(page).toHaveURL("/");
